@@ -27,11 +27,28 @@
         input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #334155; border-radius: 2px; }
         input[type=range]:focus { outline: none; }
         
+        /* Estilização de Inputs Numéricos */
+        input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+        input[type=number]::-webkit-outer-spin-button,
+        input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        
         canvas { display: block; width: 100%; height: 100%; cursor: default; }
 
         .glass-panel { background: rgba(30, 41, 59, 0.75); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
         .signal-card { transition: all 0.2s ease; }
         .signal-card.active { border-color: var(--sig-color); background: rgba(var(--sig-color-rgb), 0.15); }
+
+        /* Autocomplete Styles */
+        .autocomplete-suggestions {
+            position: absolute; z-index: 1000; background: #1e293b; border: 1px solid #475569;
+            border-radius: 0.5rem; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5);
+            max-height: 200px; overflow-y: auto; min-width: 150px;
+        }
+        .suggestion-item { padding: 0.5rem 0.75rem; cursor: pointer; font-size: 0.75rem; border-bottom: 1px solid #334155; }
+        .suggestion-item:last-child { border-bottom: none; }
+        .suggestion-item.selected { background: #3b82f6; color: white; }
+        .suggestion-item b { color: #60a5fa; }
+        .suggestion-item.selected b { color: #dbeafe; }
 
         .tab-btn { transition: all 0.2s; white-space: nowrap; border-bottom: 2px solid transparent; }
         .tab-btn.active { border-bottom: 2px solid #3b82f6; color: #60a5fa; }
@@ -40,9 +57,53 @@
         .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
 
         #graph-container { transition: all 0.3s ease-in-out; }
+
+        /* Estilos do Menu de Controles Expansível */
+        .controls-menu-container {
+            position: absolute; bottom: 12px; right: 12px;
+            display: flex; flex-direction: column-reverse; align-items: center; gap: 8px; z-index: 50;
+        }
+        @media (min-width: 768px) { .controls-menu-container { bottom: 20px; right: 20px; gap: 12px; } }
+
+        .controls-stack {
+            display: flex; flex-direction: column-reverse; gap: 8px;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transform: translateY(20px); opacity: 0; pointer-events: none;
+        }
+        .controls-stack.expanded { transform: translateY(0); opacity: 1; pointer-events: auto; }
+        
+        .control-btn {
+            width: 36px; height: 36px; border-radius: 9999px;
+            background: rgba(30, 41, 59, 0.85); color: #94a3b8;
+            display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.2s; font-size: 1.1rem; cursor: pointer;
+        }
+        @media (min-width: 768px) { .control-btn { width: 42px; height: 42px; } }
+        .control-btn:hover { background: rgba(51, 65, 85, 0.9); color: white; transform: scale(1.05); }
+        .control-btn.active { color: #60a5fa; border-color: rgba(96, 165, 250, 0.5); background: rgba(30, 41, 59, 0.95); }
+
+        .main-expand-btn {
+            width: 44px; height: 44px; background: #3b82f6; color: white; border: none;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+        }
+        @media (min-width: 768px) { .main-expand-btn { width: 52px; height: 52px; } }
+        .main-expand-btn:hover { background: #2563eb; transform: rotate(90deg); }
+        .main-expand-btn.expanded { transform: rotate(45deg); background: #ef4444; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4); }
+
+        /* Tooltip Customizado Instantâneo */
+        .custom-tooltip {
+            position: fixed; background: rgba(15, 23, 42, 0.95); color: #f8fafc;
+            padding: 6px 10px; border-radius: 6px; font-size: 11px; font-weight: 500;
+            pointer-events: none; z-index: 1000; opacity: 0; transform: translateX(5px);
+            transition: opacity 0.1s, transform 0.1s; border: 1px solid rgba(255, 255, 255, 0.1);
+            white-space: nowrap; backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+        .custom-tooltip.visible { opacity: 1; transform: translateX(0); }
     </style>
 </head>
 <body class="h-[100dvh] w-screen flex flex-col md:flex-row overflow-hidden bg-[#0f172a] relative">
+    <div id="global-tooltip" class="custom-tooltip"></div>
 
     <button id="btn-expand-sidebar" onclick="toggleSidebar()" class="hidden absolute top-4 left-4 z-[150] bg-slate-800 text-white p-2 px-4 rounded-lg shadow-2xl border border-slate-500 hover:bg-slate-700 items-center gap-2 transition-all font-semibold text-sm">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg> Mostrar Painel
@@ -69,13 +130,20 @@
             <canvas id="signalCanvas"></canvas>
             <div class="absolute top-2 right-2 md:top-4 md:right-4 glass-panel p-2 md:p-3 rounded-lg flex flex-col gap-1 md:gap-2 shadow-lg min-w-[110px] md:min-w-[150px] z-20 pointer-events-none" id="chart-legend"></div>
             
-            <!-- CONTROLES DE CÂMERA -->
-            <div class="absolute bottom-3 left-3 md:bottom-5 md:left-5 flex gap-2 md:gap-3 z-30">
-                <button onclick="toggleHoverCursor()" id="btn-hover" class="w-8 h-8 md:w-10 md:h-10 bg-slate-800/80 hover:bg-slate-700 text-slate-400 rounded-full flex items-center justify-center backdrop-blur shadow-lg border border-slate-600 transition text-lg" title="Inspecionar Coordenadas (Alt+C)">🎯</button>
-                <button onclick="zoom(-0.2)" class="w-8 h-8 md:w-10 md:h-10 bg-slate-800/80 hover:bg-slate-700 text-white rounded-full flex items-center justify-center backdrop-blur shadow-lg border border-slate-600 transition text-lg" title="Zoom In (+)">+</button>
-                <button onclick="zoom(0.2)" class="w-8 h-8 md:w-10 md:h-10 bg-slate-800/80 hover:bg-slate-700 text-white rounded-full flex items-center justify-center backdrop-blur shadow-lg border border-slate-600 transition text-lg" title="Zoom Out (-)">-</button>
-                <button onclick="resetZoomPan()" class="w-8 h-8 md:w-10 md:h-10 bg-slate-800/80 hover:bg-slate-700 text-white rounded-full flex items-center justify-center backdrop-blur shadow-lg border border-slate-600 transition text-sm" title="Centralizar Visualização (0)">🏠</button>
-                <button onclick="toggleFullscreen()" id="btn-fullscreen" class="w-8 h-8 md:w-10 md:h-10 bg-blue-600/80 hover:bg-blue-500 text-white rounded-full flex items-center justify-center backdrop-blur shadow-lg border border-blue-500 transition text-sm" title="Alternar Tela Cheia (Esc)">⛶</button>
+            <!-- CONTROLES DE CÂMERA EXPANSÍVEIS -->
+            <div class="controls-menu-container">
+                <button onclick="toggleControlsMenu()" id="main-controls-btn" class="control-btn main-expand-btn flex items-center justify-center transition-all duration-300" title="Controles de Visualização">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+                
+                <div id="controls-stack" class="controls-stack">
+                    <button onmouseenter="showTooltip(event, 'Mostrar/Ocultar Legenda')" onmouseleave="hideTooltip()" onclick="toggleLegend()" id="btn-toggle-legend" class="control-btn active">🏷️</button>
+                    <button onmouseenter="showTooltip(event, 'Inspecionar Coordenadas (Alt+C)')" onmouseleave="hideTooltip()" onclick="toggleHoverCursor()" id="btn-hover" class="control-btn">🎯</button>
+                    <button onmouseenter="showTooltip(event, 'Zoom In (+)')" onmouseleave="hideTooltip()" onclick="zoom(-0.2)" class="control-btn text-white">+</button>
+                    <button onmouseenter="showTooltip(event, 'Zoom Out (-)')" onmouseleave="hideTooltip()" onclick="zoom(0.2)" class="control-btn text-white">-</button>
+                    <button onmouseenter="showTooltip(event, 'Centralizar Visualização (0)')" onmouseleave="hideTooltip()" onclick="resetZoomPan()" class="control-btn text-white text-sm">🏠</button>
+                    <button onmouseenter="showTooltip(event, 'Alternar Tela Cheia (Esc)')" onmouseleave="hideTooltip()" onclick="toggleFullscreen()" id="btn-fullscreen" class="control-btn text-blue-400">⛶</button>
+                </div>
             </div>
         </div>
 
@@ -161,11 +229,12 @@
                 <div class="flex items-center gap-2">
                     <button onclick="toggleSidebar()" class="text-slate-400 hover:text-white transition p-1 bg-slate-800 rounded hidden md:block" title="Minimizar Painel"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
                     <h1 class="text-lg md:text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-teal-300">Sinais & Sistemas</h1>
+                    <button onclick="openSettings()" class="text-slate-400 hover:text-blue-400 transition ml-1" title="Configurações do Sistema">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    </button>
                 </div>
                 <div class="flex gap-2">
                     <button onclick="openShortcutsGuide()" class="text-[10px] md:text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1.5 md:py-1 rounded flex items-center gap-1 transition text-white" title="Atalhos de Teclado">⌨️</button>
-                    <button onclick="document.getElementById('file-import').click()" class="text-[10px] md:text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1.5 md:py-1 rounded flex items-center gap-1 transition" title="Alt + I">📥 <span class="hidden sm:inline">Importar</span></button>
-                    <button onclick="exportState()" class="text-[10px] md:text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1.5 md:py-1 rounded flex items-center gap-1 transition" title="Alt + S">📤 <span class="hidden sm:inline">Exportar</span></button>
                 </div>
             </div>
 
@@ -206,15 +275,15 @@
                     
                     <div class="space-y-4 md:space-y-5" id="sliders-container">
                         <div id="container-param-A">
-                            <div id="slider-group-A"><div class="flex justify-between mb-1"><label class="text-[10px] md:text-xs font-semibold text-slate-400">Amplitude (A)</label><span id="val-amplitude" class="text-[10px] md:text-xs math-font text-white">2.0</span></div><input type="range" id="slider-amplitude" min="0" max="10" step="0.5" value="2"></div>
+                            <div id="slider-group-A"><div class="flex justify-between mb-1"><label class="text-[10px] md:text-xs font-semibold text-slate-400">Amplitude (A)</label><input type="number" id="input-amplitude" step="0.1" class="w-12 bg-transparent text-right text-[10px] md:text-xs math-font text-white focus:outline-none focus:text-blue-400" value="2.0"></div><input type="range" id="slider-amplitude" min="0" max="10" step="0.5" value="2"></div>
                             <button id="btn-inject-A" onclick="injectParam('A')" class="hidden text-[10px] md:text-xs bg-blue-600/20 hover:bg-blue-600/40 text-blue-300 w-full py-1.5 rounded border border-blue-500/30 transition">✨ Injetar Amplitude (A)</button>
                         </div>
                         <div id="container-param-T0">
-                            <div id="slider-group-T0"><div class="flex justify-between mb-1"><label class="text-[10px] md:text-xs font-semibold text-slate-400" id="label-period">Período (T₀ / N)</label><span id="val-period" class="text-[10px] md:text-xs math-font text-white">10</span></div><input type="range" id="slider-period" min="2" max="30" step="1" value="10"></div>
+                            <div id="slider-group-T0"><div class="flex justify-between mb-1"><label class="text-[10px] md:text-xs font-semibold text-slate-400" id="label-period">Período (T₀ / N)</label><input type="number" id="input-period" step="1" class="w-12 bg-transparent text-right text-[10px] md:text-xs math-font text-white focus:outline-none focus:text-yellow-400" value="10"></div><input type="range" id="slider-period" min="2" max="30" step="1" value="10"></div>
                             <button id="btn-inject-T0" onclick="injectParam('T0')" class="hidden text-[10px] md:text-xs bg-yellow-500/20 hover:bg-yellow-500/40 text-yellow-300 w-full py-1.5 rounded border border-yellow-500/30 transition">✨ Injetar Período (T₀)</button>
                         </div>
                         <div id="container-param-phase">
-                            <div id="slider-group-phase"><div class="flex justify-between mb-1"><label class="text-[10px] md:text-xs font-semibold text-slate-400">Fase (φ)</label><span id="val-phase" class="text-[10px] md:text-xs math-font text-white">0 rad</span></div><input type="range" id="slider-phase" min="-3.14159" max="3.14159" step="0.392699" value="0"></div>
+                            <div id="slider-group-phase"><div class="flex justify-between mb-1"><label class="text-[10px] md:text-xs font-semibold text-slate-400">Fase (φ)</label><input type="number" id="input-phase" step="0.1" class="w-12 bg-transparent text-right text-[10px] md:text-xs math-font text-white focus:outline-none focus:text-pink-400" value="0"></div><input type="range" id="slider-phase" min="-3.14159" max="3.14159" step="0.392699" value="0"></div>
                             <button id="btn-inject-phase" onclick="injectParam('phase')" class="hidden text-[10px] md:text-xs bg-pink-500/20 hover:bg-pink-500/40 text-pink-300 w-full py-1.5 rounded border border-pink-500/30 transition">✨ Injetar Atraso/Fase (φ)</button>
                         </div>
                     </div>
@@ -241,14 +310,14 @@
                 <div class="bg-slate-800/50 p-3 md:p-4 rounded-xl border border-slate-700 flex-1 mb-2">
                     <h3 class="text-xs md:text-sm font-semibold text-blue-400 mb-4 border-b border-slate-700 pb-2">Variável Independente (Tempo)</h3>
                     <div class="space-y-5 mb-6 text-blue-300">
-                        <div><div class="flex justify-between mb-1"><label class="text-[10px] md:text-xs font-semibold">Escalonamento (a)</label><span id="val-trans-a" class="text-[10px] md:text-xs math-font text-white">1.0</span></div><input type="range" id="slider-trans-a" min="-5" max="5" step="0.5" value="1" oninput="updateTransformData()"><p class="text-[9px] text-slate-500 mt-1">Multiplica o tempo. Negativo = Reversão.</p></div>
-                        <div><div class="flex justify-between mb-1"><label class="text-[10px] md:text-xs font-semibold">Deslocamento (t₀ / n₀)</label><span id="val-trans-t0" class="text-[10px] md:text-xs math-font text-white">0</span></div><input type="range" id="slider-trans-t0" min="-10" max="10" step="0.5" value="0" oninput="updateTransformData()"><p class="text-[9px] text-slate-500 mt-1">Soma/Subtrai do tempo. >0 Atrasa, <0 Adianta.</p></div>
+                        <div><div class="flex justify-between mb-1"><label class="text-[10px] md:text-xs font-semibold">Escalonamento (a)</label><input type="number" id="input-trans-a" step="0.1" class="w-12 bg-transparent text-right text-[10px] md:text-xs math-font text-white focus:outline-none" value="1.0"></div><input type="range" id="slider-trans-a" min="-5" max="5" step="0.1" value="1" oninput="updateTransformData()"><p class="text-[9px] text-slate-500 mt-1">Multiplica o tempo. Negativo = Reversão.</p></div>
+                        <div><div class="flex justify-between mb-1"><label class="text-[10px] md:text-xs font-semibold">Deslocamento (t₀ / n₀)</label><input type="number" id="input-trans-t0" step="0.5" class="w-12 bg-transparent text-right text-[10px] md:text-xs math-font text-white focus:outline-none" value="0"></div><input type="range" id="slider-trans-t0" min="-10" max="10" step="0.1" value="0" oninput="updateTransformData()"><p class="text-[9px] text-slate-500 mt-1">Soma/Subtrai do tempo. >0 Atrasa, <0 Adianta.</p></div>
                     </div>
 
                     <h3 class="text-xs md:text-sm font-semibold text-green-400 mb-4 border-b border-slate-700 pb-2">Variável Dependente (Amplitude)</h3>
                     <div class="space-y-5 text-green-300">
-                        <div><div class="flex justify-between mb-1"><label class="text-[10px] md:text-xs font-semibold">Ganho / Escalonamento (C)</label><span id="val-trans-c" class="text-[10px] md:text-xs math-font text-white">1.0</span></div><input type="range" id="slider-trans-c" min="-5" max="5" step="0.5" value="1" oninput="updateTransformData()"></div>
-                        <div><div class="flex justify-between mb-1"><label class="text-[10px] md:text-xs font-semibold">Deslocamento (D)</label><span id="val-trans-d" class="text-[10px] md:text-xs math-font text-white">0</span></div><input type="range" id="slider-trans-d" min="-10" max="10" step="0.5" value="0" oninput="updateTransformData()"></div>
+                        <div><div class="flex justify-between mb-1"><label class="text-[10px] md:text-xs font-semibold">Ganho / Escalonamento (C)</label><input type="number" id="input-trans-c" step="0.1" class="w-12 bg-transparent text-right text-[10px] md:text-xs math-font text-white focus:outline-none" value="1.0"></div><input type="range" id="slider-trans-c" min="-5" max="5" step="0.1" value="1" oninput="updateTransformData()"></div>
+                        <div><div class="flex justify-between mb-1"><label class="text-[10px] md:text-xs font-semibold">Deslocamento (D)</label><input type="number" id="input-trans-d" step="0.5" class="w-12 bg-transparent text-right text-[10px] md:text-xs math-font text-white focus:outline-none" value="0"></div><input type="range" id="slider-trans-d" min="-10" max="10" step="0.1" value="0" oninput="updateTransformData()"></div>
                     </div>
                 </div>
                 <div class="flex gap-2 shrink-0">
@@ -364,6 +433,7 @@
                     <tbody>
                         <tr class="border-b border-slate-700/50"><td class="py-2"><kbd class="bg-slate-700 border border-slate-500 rounded px-1.5 py-0.5 text-xs text-white">Ctrl + Z</kbd></td><td class="py-2">Desfazer Ação</td></tr>
                         <tr class="border-b border-slate-700/50"><td class="py-2"><kbd class="bg-slate-700 border border-slate-500 rounded px-1.5 py-0.5 text-xs text-white">Ctrl + Y</kbd> ou <kbd class="bg-slate-700 border border-slate-500 rounded px-1.5 py-0.5 text-xs text-white">Ctrl+Shift+Z</kbd></td><td class="py-2">Refazer Ação</td></tr>
+                        <tr class="border-b border-slate-700/50"><td class="py-2"><kbd class="bg-slate-700 border border-slate-500 rounded px-1.5 py-0.5 text-xs text-white">Alt + G</kbd></td><td class="py-2">Configurações do Sistema</td></tr>
                         <tr class="border-b border-slate-700/50"><td class="py-2"><kbd class="bg-slate-700 border border-slate-500 rounded px-1.5 py-0.5 text-xs text-white">Alt + S</kbd></td><td class="py-2">Exportar Sinais</td></tr>
                         <tr class="border-b border-slate-700/50"><td class="py-2"><kbd class="bg-slate-700 border border-slate-500 rounded px-1.5 py-0.5 text-xs text-white">Alt + I</kbd></td><td class="py-2">Importar Sinais</td></tr>
                         <tr class="border-b border-slate-700/50"><td class="py-2"><kbd class="bg-slate-700 border border-slate-500 rounded px-1.5 py-0.5 text-xs text-white">Alt + N</kbd></td><td class="py-2">Adicionar Novo Sinal</td></tr>
@@ -380,78 +450,107 @@
 
     <!-- Modal Guia da Teoria -->
     <div id="math-guide-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-3 md:p-4">
-        <div class="bg-slate-800 border border-slate-600 rounded-xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col max-h-full">
-            <div class="flex justify-between items-center p-3 md:p-4 border-b border-slate-700 bg-slate-800/80 shrink-0">
-                <h2 class="text-base md:text-lg font-bold text-blue-400 flex items-center gap-2">📖 Guia Focado nas Provas (TEC412)</h2>
-                <button onclick="closeMathGuide()" class="text-slate-400 hover:text-white transition p-1"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+        <div class="bg-slate-800 border border-slate-600 rounded-xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="p-4 border-b border-slate-700 bg-slate-800/80 shrink-0">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-base md:text-lg font-bold text-blue-400 flex items-center gap-2">📖 Laboratório de Teoria Acadêmica</h2>
+                    <button onclick="closeMathGuide()" class="text-slate-400 hover:text-white transition p-1"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+                </div>
+                <div class="flex gap-4 border-b border-slate-700">
+                    <button id="guide-tab-signals" class="active pb-2 text-xs md:text-sm font-semibold transition-all border-b-2 border-blue-500 text-blue-400" onclick="setMathGuideTab('signals')">1. Sinais & Janelamento</button>
+                    <button id="guide-tab-blocks" class="text-slate-400 pb-2 text-xs md:text-sm font-semibold transition-all border-b-2 border-transparent" onclick="setMathGuideTab('blocks')">2. Diagramas de Bloco</button>
+                    <button id="guide-tab-properties" class="text-slate-400 pb-2 text-xs md:text-sm font-semibold transition-all border-b-2 border-transparent" onclick="setMathGuideTab('properties')">3. Propriedades</button>
+                </div>
             </div>
-            <div class="p-4 md:p-5 overflow-y-auto text-xs md:text-sm text-slate-300 space-y-5">
-                
-                <div>
-                    <h3 class="font-bold text-white border-b border-slate-600 pb-1 mb-2 text-sm md:text-base">1. Sinais Clássicos de Prova</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div class="bg-slate-900/50 p-3 rounded">
-                            <ul class="space-y-1 text-xs">
-                                <li><code class="text-teal-300">dirac(t)</code> : Impulso (Delta). δ(t)</li>
-                                <li><code class="text-teal-300">dublet(t)</code> : Dupleto (Derivada de δ).</li>
-                                <li><code class="text-teal-300">u(t)</code> : Degrau Unitário.</li>
-                                <li><code class="text-teal-300">ramp(t)</code> : Rampa. t · u(t)</li>
-                                <li><code class="text-teal-300">rect(t)</code> : Pulso Quadrado Unitário.</li>
-                                <li><code class="text-teal-300">tri(t)</code> : Pulso Triangular Unitário.</li>
-                                <li><code class="text-teal-300">sinc(t)</code> : Seno Cardinal. sin(πt)/(πt)</li>
-                                <li><code class="text-teal-300">pulse(t, a, b)</code> : Pulso arbitrário.</li>
-                            </ul>
+
+            <div class="p-5 overflow-y-auto text-xs md:text-sm text-slate-300">
+                <!-- ABA 1: SINAIS -->
+                <div id="guide-content-signals" class="space-y-6">
+                    <div class="bg-blue-900/20 border border-blue-500/30 p-4 rounded-lg">
+                        <h3 class="text-blue-400 font-bold mb-2">📚 Documentação de Sinais (Assinaturas)</h3>
+                        <p class="mb-3">Você pode usar os sinais básicos ou aplicar a <b>Sobrecarga de Intervalo</b> <code class="bg-slate-900 px-1 rounded text-teal-300">(t, a, b)</code> para limitar qualquer função.</p>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 font-mono text-[10px] md:text-xs">
+                            <div class="space-y-2">
+                                <p><b class="text-white">u(t, a, b)</b>: Degrau unitário. Vale 1 para t &ge; 0.</p>
+                                <p><b class="text-white">rect(t, a, b)</b>: Pulso retangular. Padrão: [-0.5, 0.5].</p>
+                                <p><b class="text-white">tri(t, a, b)</b>: Pulso triangular. Padrão: [-1, 1].</p>
+                                <p><b class="text-white">sinc(t, a, b)</b>: Seno cardinal sin(&pi;t)/(&pi;t).</p>
+                                <p><b class="text-white">ramp(t, a, b)</b>: Rampa unitária t &middot; u(t).</p>
+                                <p><b class="text-white">e(t, a, b)</b>: Exponencial natural (e<sup>t</sup>).</p>
+                            </div>
+                            <div class="space-y-2">
+                                <p><b class="text-white">sin(t, a, b) / cos(t, a, b)</b>: Funções trigonométricas.</p>
+                                <p><b class="text-white">dirac(t)</b>: Impulso de Dirac (Delta &delta;). <i>Fixo em t=0.</i></p>
+                                <p><b class="text-white">dublet(t, a, b)</b>: Dupleto (Derivada do impulso).</p>
+                                <p><b class="text-white">pulse(t, start, end)</b>: Pulso genérico entre limites.</p>
+                                <p><b class="text-white">inf / minf</b>: Limites dinâmicos do grid atual.</p>
+                            </div>
                         </div>
-                        <div class="bg-slate-900/50 p-3 rounded">
-                            <p class="text-[10px] text-slate-400 mb-1">Cálculos Exigidos nas Provas:</p>
-                            <ul class="space-y-1 text-xs mb-2">
-                                <li><b>Sinc vs Rect:</b> Lembre-se, a convolução de dois retângulos gera um triângulo. A Transformada de Fourier de um retângulo é uma Sinc!</li>
-                                <li><b>Energia e Potência:</b> O painel na Aba 1 calcula numericamente E = ∫ |x|² dt da janela visível.</li>
-                            </ul>
+                    </div>
+
+                    <div class="bg-slate-900/50 p-4 rounded-lg border border-slate-700">
+                        <h4 class="font-bold text-white mb-2 flex items-center gap-2">💡 Exemplo de Expressão Complexa</h4>
+                        <div class="bg-black/40 p-3 rounded font-mono text-blue-300">
+                            2 * rect(t, -5, 3) + sinc(t, 0, inf)
+                        </div>
+                        <p class="mt-2 text-[11px] text-slate-400 italic">Isso cria um pulso de amplitude 2 entre -5 e 3, somado a uma função Sinc que só começa no zero e vai até o infinito visual.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="bg-slate-900/50 p-3 rounded border border-slate-700">
+                            <h4 class="font-bold text-white mb-2">Constantes Dinâmicas</h4>
+                            <p class="text-[11px] leading-relaxed">Use <code class="text-yellow-400">inf</code> e <code class="text-yellow-400">minf</code> para representar os limites atuais da sua visualização. Útil para criar sinais que acompanham o zoom do Lab.</p>
+                        </div>
+                        <div class="bg-slate-900/50 p-3 rounded border border-slate-700">
+                            <h4 class="font-bold text-white mb-2">Domínio Discreto [n]</h4>
+                            <p class="text-[11px] leading-relaxed">As mesmas funções funcionam para <code class="text-teal-400">n</code>. O intervalo <code class="text-white">a, b</code> é arredondado para o inteiro mais próximo automaticamente.</p>
                         </div>
                     </div>
                 </div>
 
-                <div>
-                    <h3 class="font-bold text-white border-b border-slate-600 pb-1 mb-2 text-sm md:text-base">2. Diagramas de Blocos (Interconexão)</h3>
-                    <p class="text-[10px] text-slate-400 mb-2">Use a funcionalidade "Diagrama de Blocos" na Aba 4 para simular topologias complexas.</p>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                        <div class="bg-purple-900/20 p-3 rounded border border-purple-800/30">
-                            <strong class="text-purple-400">Sistemas em Paralelo (SOMA)</strong>
-                            <p class="mt-1">Equivale a <b>SOMAR</b> as respostas ao impulso: <b>h<sub>eq</sub>(t)</b> = h₁(t) + h₂(t).</p>
+                <!-- ABA 2: BLOCOS -->
+                <div id="guide-content-blocks" class="hidden space-y-6">
+                    <div class="flex flex-col gap-4">
+                        <div class="bg-slate-900/50 p-4 rounded-lg border-l-4 border-blue-500">
+                            <h3 class="text-white font-bold mb-2">Sistemas em Série (Cascata)</h3>
+                            <p class="mb-2">Representado pela multiplicação <code class="text-blue-400">✖️</code>. No domínio do tempo, a resposta equivalente é a <b>convolução</b>:</p>
+                            <div class="bg-black/40 p-2 rounded font-mono text-center">h_eq(t) = h1(t) * h2(t)</div>
                         </div>
-                        <div class="bg-blue-900/20 p-3 rounded border border-blue-800/30">
-                            <strong class="text-blue-400">Sistemas em Cascata (MULTIPLICAÇÃO)</strong>
-                            <p class="mt-1">Equivale a <b>CONVOLUIR</b> as respostas: <b>h<sub>eq</sub>(t)</b> = h₁(t) * h₂(t).</p>
+                        <div class="bg-slate-900/50 p-4 rounded-lg border-l-4 border-purple-500">
+                            <h3 class="text-white font-bold mb-2">Sistemas em Paralelo</h3>
+                            <p class="mb-2">Representado pela soma <code class="text-purple-400">➕</code>. A resposta equivalente é a <b>soma algébrica</b> das respostas individuais:</p>
+                            <div class="bg-black/40 p-2 rounded font-mono text-center">h_eq(t) = h1(t) + h2(t)</div>
+                        </div>
+                        <div class="bg-yellow-900/20 border border-yellow-500/20 p-3 rounded text-[11px]">
+                            ⚠️ <b>Nota Acadêmica:</b> A ordem dos blocos em série não altera o resultado se os sistemas forem Lineares e Invariantes no Tempo (SLIT).
                         </div>
                     </div>
                 </div>
 
-                <div>
-                    <h3 class="font-bold text-white border-b border-slate-600 pb-1 mb-2 text-sm md:text-base">3. Propriedades de SISTEMAS</h3>
-                    <p class="text-[10px] text-slate-400 mb-2">Atenção: Linearidade, Invariância, Memória e Causalidade são atributos de SISTEMAS, não de sinais. (Use a aba "Propriedades").</p>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-                        <div class="bg-slate-900/50 p-3 rounded">
-                            <strong class="text-white">Memória e Causal</strong>
-                            <ul class="mt-1 space-y-1 list-disc pl-4 text-[10px]">
-                                <li><b>Sem Memória:</b> Só depende do presente. y(t) = x(t)²</li>
-                                <li><b>Não Causal:</b> Depende do futuro. y(t) = x(t+1)</li>
-                            </ul>
+                <!-- ABA 3: PROPRIEDADES -->
+                <div id="guide-content-properties" class="hidden space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="p-3 bg-slate-900/80 rounded border border-slate-700">
+                            <h4 class="font-bold text-green-400 mb-1">Linearidade</h4>
+                            <p class="text-[10px]">Um sistema é linear se satisfaz a <b>Superposição</b> e <b>Homogeneidade</b>. Se você dobrar a entrada, a saída deve dobrar.</p>
                         </div>
-                        <div class="bg-slate-900/50 p-3 rounded">
-                            <strong class="text-white">Linearidade</strong>
-                            <ul class="mt-1 space-y-1 list-disc pl-4 text-[10px]">
-                                <li><b>Linear:</b> Superposição funciona.</li>
-                                <li><b>Não Linear:</b> Falha na proporção. Ex: x(t)², |x(t)|.</li>
-                            </ul>
+                        <div class="p-3 bg-slate-900/80 rounded border border-slate-700">
+                            <h4 class="font-bold text-yellow-400 mb-1">Invariância no Tempo</h4>
+                            <p class="text-[10px]">O comportamento do sistema não muda com o tempo. Se <code class="text-white">x(t) -> y(t)</code>, então <code class="text-white">x(t-τ) -> y(t-τ)</code>.</p>
                         </div>
-                        <div class="bg-slate-900/50 p-3 rounded">
-                            <strong class="text-white">Invariância (SLIT)</strong>
-                            <ul class="mt-1 space-y-1 list-disc pl-4 text-[10px]">
-                                <li><b>Invariante:</b> Atrasar a entrada gera apenas saída atrasada.</li>
-                                <li><b>Variante:</b> Parâmetros têm 't'. Ex: y(t) = x(2t).</li>
-                            </ul>
+                        <div class="p-3 bg-slate-900/80 rounded border border-slate-700">
+                            <h4 class="font-bold text-blue-400 mb-1">Causalidade</h4>
+                            <p class="text-[10px]">O sistema é causal se a saída depende apenas de valores atuais ou passados da entrada. Sistemas que "preveem" o futuro são não-causais.</p>
                         </div>
+                        <div class="p-3 bg-slate-900/80 rounded border border-slate-700">
+                            <h4 class="font-bold text-red-400 mb-1">Estabilidade (BIBO)</h4>
+                            <p class="text-[10px]">Entradas limitadas (Bounded Input) devem gerar saídas limitadas (Bounded Output). Se o sinal explode para infinito, é instável.</p>
+                        </div>
+                    </div>
+                    <div class="bg-indigo-900/20 p-4 rounded border border-indigo-500/30">
+                        <h4 class="font-bold text-white mb-2">Dica de Prova: Memória</h4>
+                        <p class="text-[11px]">Sistemas <b>sem memória</b> dependem apenas do instante <code class="text-white">t</code> atual. Exemplos: resistores, amplificadores simples. Sistemas com capacitores ou indutores possuem memória pois armazenam energia (estado passado).</p>
                     </div>
                 </div>
             </div>
@@ -480,38 +579,52 @@
         </div>
     </div>
 
+    <!-- Modal Configurações -->
+    <div id="settings-modal" class="hidden fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4">
+        <div class="bg-slate-800 border border-slate-600 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col">
+            <div class="flex justify-between items-center p-4 border-b border-slate-700 bg-slate-800/80">
+                <h2 class="text-base font-bold text-white flex items-center gap-2">⚙️ Configurações</h2>
+                <button onclick="closeSettings()" class="text-slate-400 hover:text-white transition"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+            </div>
+            <div class="p-5 space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-sm font-semibold text-white">Autocomplete de Sinais</h3>
+                        <p class="text-[11px] text-slate-400">Sugere funções enquanto você digita.</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="check-autocomplete" class="sr-only peer" checked onchange="toggleAutocomplete()">
+                        <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+                
+                <div class="pt-4 border-t border-slate-700">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase mb-3 tracking-widest text-center">Gerenciamento de Dados</h3>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button onclick="document.getElementById('file-import').click()" class="bg-slate-700 hover:bg-slate-600 text-white p-3 rounded-lg flex flex-col items-center gap-1 transition text-xs font-semibold border border-slate-500">
+                            <span class="text-lg">📥</span> Importar JSON
+                        </button>
+                        <button onclick="exportState()" class="bg-slate-700 hover:bg-slate-600 text-white p-3 rounded-lg flex flex-col items-center gap-1 transition text-xs font-semibold border border-slate-500">
+                            <span class="text-lg">📤</span> Exportar JSON
+                        </button>
+                    </div>
+                </div>
+
+                <div class="pt-4 border-t border-slate-700">
+                    <p class="text-[10px] text-slate-500 text-center italic">Versão Acadêmica 2.5.0 (Build: 270426)<br>Atalho: Alt + G para abrir este painel.</p>
+                </div>
+            </div>
+            <div class="p-4 bg-slate-900/50 flex justify-end">
+                <button onclick="closeSettings()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-xs font-bold transition">Concluir</button>
+            </div>
+        </div>
+    </div>
+
     <!-- SCRIPT PRINCIPAL -->
     <script>
-        window.addEventListener('error', e => {
-            if (e.message === 'ResizeObserver loop limit exceeded' || e.message === 'ResizeObserver loop completed with undelivered notifications.') {
-                e.stopImmediatePropagation();
-            }
-        });
-
-        math.import({
-            u: function(t) { return t >= 0 ? 1 : 0; },
-            rect: function(t) { return Math.abs(t) <= 0.5 ? 1 : 0; },
-            tri: function(t) { return Math.abs(t) < 1 ? 1 - Math.abs(t) : 0; },
-            sinc: function(t) { return t === 0 ? 1 : Math.sin(Math.PI * t) / (Math.PI * t); },
-            pulse: function(t, a, b) { return (t >= a && t <= b) ? 1 : 0; },
-            dirac: function(t) { return Math.abs(t) < 0.05 ? 10 : 0; },
-            ramp: function(t) { return t >= 0 ? t : 0; },
-            dublet: function(t) { if(t > -0.05 && t < 0) return -20; if(t >= 0 && t < 0.05) return 20; return 0; }
-        });
-
+        // Inicialização do Estado (Mover para o topo para evitar ReferenceError)
         const SIGNAL_COLORS = [{ hex: '#3b82f6', rgb: '59, 130, 246' }, { hex: '#10b981', rgb: '16, 185, 129' }, { hex: '#ec4899', rgb: '236, 72, 153' }, { hex: '#f59e0b', rgb: '245, 158, 11' }, { hex: '#8b5cf6', rgb: '139, 92, 246' }];
 
-        let canvas, ctx, signalsContainer, sliderA, sliderT0, sliderPhase, valA, valT0, valPhase, graphContainer;
-        let xMin = -15, xMax = 25, yMin = -6, yMax = 6;
-        const defXMin = -15, defXMax = 25, defYMin = -6, defYMax = 6;
-        let scaleX, scaleY, originX, originY;
-        let isDragging = false, lastDragX = 0, lastDragY = 0, isFullscreen = false, isResizingSidebar = false, pinchDist = 0;
-        let stateHistory = [], stateHistoryRedo = [], pwRules = [], animFrameId = null, signalCounter = 4;
-        
-        let hoverActive = false, hoverX = null, hoverY = null;
-        let mouseCanvasX = null, mouseCanvasY = null;
-        let activeSignalPeriod = null;
-        
         let state = {
             appMode: 'analysis', domain: 'continuous',
             isSidebarCollapsed: false,
@@ -527,7 +640,96 @@
             sys: { mode: 'op', chain: [{ sig: 1 }, { op: 'add', sig: 2 }], sysX: 1, sysTemp: 'amp', genEq: "0", diag: "" }
         };
 
+        window.addEventListener('error', e => {
+            if (e.message === 'ResizeObserver loop limit exceeded' || e.message === 'ResizeObserver loop completed with undelivered notifications.') {
+                e.stopImmediatePropagation();
+            }
+        });
+
+        // Importação com Override para funções nativas
+        math.import({
+            u: function(t, a, b) { 
+                if (a !== undefined && t < a) return 0; 
+                if (b !== undefined && t > b) return 0; 
+                return t >= 0 ? 1 : 0; 
+            },
+            rect: function(t, a, b) { 
+                if (a !== undefined || b !== undefined) {
+                    const start = a !== undefined ? a : -0.5;
+                    const end = b !== undefined ? b : 0.5;
+                    return (t >= start && t <= end) ? 1 : 0;
+                }
+                return Math.abs(t) <= 0.5 ? 1 : 0; 
+            },
+            tri: function(t, a, b) { 
+                if (a !== undefined || b !== undefined) {
+                    const start = a !== undefined ? a : -1;
+                    const end = b !== undefined ? b : 1;
+                    if (t < start || t > end) return 0;
+                    const mid = (start + end) / 2;
+                    if (t <= mid) return (t - start) / (mid - start);
+                    return 1 - (t - mid) / (end - mid);
+                }
+                return Math.abs(t) < 1 ? 1 - Math.abs(t) : 0; 
+            },
+            sinc: function(t, a, b) { 
+                if (a !== undefined && t < a) return 0; 
+                if (b !== undefined && t > b) return 0; 
+                return t === 0 ? 1 : Math.sin(Math.PI * t) / (Math.PI * t); 
+            },
+            sin: function(t, a, b) {
+                if (a !== undefined && t < a) return 0;
+                if (b !== undefined && t > b) return 0;
+                return Math.sin(t);
+            },
+            cos: function(t, a, b) {
+                if (a !== undefined && t < a) return 0;
+                if (b !== undefined && t > b) return 0;
+                return Math.cos(t);
+            },
+            pulse: function(t, a, b) { return (t >= a && t <= b) ? 1 : 0; },
+            dirac: function(t) { return Math.abs(t) < 0.05 ? 10 : 0; },
+            ramp: function(t, a, b) { 
+                if (a !== undefined && t < a) return 0; 
+                if (b !== undefined && t > b) return 0; 
+                return t >= 0 ? t : 0; 
+            },
+            dublet: function(t, a, b) { 
+                if (a !== undefined && t < a) return 0; 
+                if (b !== undefined && t > b) return 0; 
+                if(t > -0.05 && t < 0) return -20; 
+                if(t >= 0 && t < 0.05) return 20; 
+                return 0; 
+            },
+            e: function(t, a, b) {
+                if (a !== undefined && t < a) return 0;
+                if (b !== undefined && t > b) return 0;
+                return Math.exp(t);
+            }
+        }, { override: true });
+
+        let canvas, ctx, signalsContainer, sliderA, sliderT0, sliderPhase, valA, valT0, valPhase, graphContainer;
+        let xMin = -15, xMax = 25, yMin = -6, yMax = 6;
+        const defXMin = -15, defXMax = 25, defYMin = -6, defYMax = 6;
+        let scaleX, scaleY, originX, originY;
+        let isDragging = false, lastDragX = 0, lastDragY = 0, isFullscreen = false, isResizingSidebar = false, pinchDist = 0;
+        let stateHistory = [], stateHistoryRedo = [], pwRules = [], animFrameId = null, signalCounter = 4;
+        
+        let hoverActive = false, hoverX = null, hoverY = null;
+        let mouseCanvasX = null, mouseCanvasY = null;
+        let activeSignalPeriod = null;
+        let showLegend = true;
+
         function init() {
+            // Compilação inicial para performance
+            state.signals.forEach(sig => {
+                try { 
+                    const safeEq = sig.eq.replace(/ˆ/g, '^'); 
+                    sig.compiled = math.compile(safeEq);
+                    sig.isValid = true;
+                } catch(e) { sig.isValid = false; }
+            });
+
             canvas = document.getElementById('signalCanvas'); ctx = canvas.getContext('2d');
             signalsContainer = document.getElementById('signals-container');
             sliderA = document.getElementById('slider-amplitude'); sliderT0 = document.getElementById('slider-period'); sliderPhase = document.getElementById('slider-phase');
@@ -558,7 +760,7 @@
                 
                 if (e.key === 'Escape') {
                     if (isFullscreen) toggleFullscreen();
-                    closePiecewise(); closeMathGuide(); closeShortcutsGuide();
+                    closePiecewise(); closeMathGuide(); closeShortcutsGuide(); closeSettings();
                 }
                 
                 if (e.ctrlKey || e.metaKey) {
@@ -574,6 +776,7 @@
                     if (e.key.toLowerCase() === 'n') { e.preventDefault(); addSignal(); }
                     if (e.key.toLowerCase() === 'c') { e.preventDefault(); toggleHoverCursor(); }
                     if (e.key.toLowerCase() === 'v') { e.preventDefault(); toggleVisibility(state.activeSignalId); }
+                    if (e.key.toLowerCase() === 'g') { e.preventDefault(); openSettings(); }
                 }
                 else {
                     if (e.key === '+' || e.key === '=') { e.preventDefault(); zoom(-0.2); }
@@ -768,7 +971,14 @@
             const sig = state.signals.find(s => s.id === id);
             if(sig) {
                 sig.eq = inputElement.value;
-                try { const safeEq = sig.eq.replace(/ˆ/g, '^'); math.evaluate(safeEq, {t: 1, n: 1, A: 1, T0: 1, phase: 1, pi: Math.PI}); sig.isValid = true; inputElement.classList.remove('border-red-500'); inputElement.classList.add('border-slate-600'); } 
+                try { 
+                    const safeEq = sig.eq.replace(/ˆ/g, '^'); 
+                    sig.compiled = math.compile(safeEq);
+                    sig.compiled.evaluate({t: 1, n: 1, A: 1, T0: 1, phase: 1, pi: Math.PI, inf: 25, minf: -15}); 
+                    sig.isValid = true; 
+                    inputElement.classList.remove('border-red-500'); 
+                    inputElement.classList.add('border-slate-600'); 
+                }
                 catch (err) { sig.isValid = false; inputElement.classList.add('border-red-500'); inputElement.classList.remove('border-slate-600'); }
                 if(state.activeSignalId === id && state.appMode === 'analysis') updateMathPanel();
                 if(state.appMode === 'convolution') triggerConvUpdate();
@@ -776,8 +986,7 @@
                 if(state.appMode === 'systems') updateSysData();
                 draw();
             }
-        }
-        
+        }        
         function injectParam(param) {
             saveToHistory(); const act = getActiveSignal(); const varT = state.domain === 'continuous' ? 't' : 'n'; const regex = new RegExp(`\\b${varT}\\b`, 'g');
             if (param === 'A') act.eq = `A * (${act.eq})`;
@@ -785,6 +994,85 @@
             else if (param === 'phase') act.eq = act.eq.replace(regex, `(${varT} - phase)`); 
             try { const safeEq = act.eq.replace(/ˆ/g, '^'); math.evaluate(safeEq, {t: 1, n: 1, A: 1, T0: 1, phase: 1, pi: Math.PI}); act.isValid = true; } catch (err) { act.isValid = false; }
             renderSignalsList(); updateUI();
+        }
+
+        // --- CONFIGURAÇÕES & AUTOCOMPLETE ---
+        state.settings = state.settings || { autocomplete: true };
+        const AVAILABLE_SIGNALS = ['u', 'rect', 'tri', 'sinc', 'sin', 'cos', 'pulse', 'dirac', 'ramp', 'dublet', 'inf', 'minf'];
+        let autocompleteIndex = -1; let filteredSignals = []; let activeAutocompleteInput = null;
+
+        function openSettings() { document.getElementById('settings-modal').classList.remove('hidden'); }
+        function closeSettings() { document.getElementById('settings-modal').classList.add('hidden'); }
+        function toggleAutocomplete() { state.settings.autocomplete = !state.settings.autocomplete; renderSignalsList(); }
+
+        function handleAutocomplete(e) {
+            if (!state.settings.autocomplete) return;
+            const input = e.target; const val = input.value; const pos = input.selectionStart;
+            const lastWordMatch = val.slice(0, pos).match(/([a-zA-Z0-9_]+)$/);
+            
+            if (!lastWordMatch) { hideAutocomplete(); return; }
+            const query = lastWordMatch[1].toLowerCase();
+            filteredSignals = AVAILABLE_SIGNALS.filter(s => s.startsWith(query));
+
+            if (filteredSignals.length === 0) { hideAutocomplete(); return; }
+            showAutocompleteUI(input, filteredSignals, lastWordMatch.index, query);
+        }
+
+        function showAutocompleteUI(input, matches, startIndex, query) {
+            let list = document.getElementById('autocomplete-list');
+            if (!list) {
+                list = document.createElement('div'); list.id = 'autocomplete-list';
+                list.className = 'autocomplete-suggestions'; document.body.appendChild(list);
+            }
+            activeAutocompleteInput = { input, startIndex, query };
+            const rect = input.getBoundingClientRect();
+            list.style.left = `${rect.left}px`; list.style.top = `${rect.bottom + window.scrollY}px`;
+            list.style.width = `${rect.width}px`;
+            
+            list.innerHTML = matches.map((m, i) => `<div class="suggestion-item ${i === autocompleteIndex ? 'selected' : ''}" onclick="completeSignal('${m}')"><b>${m.slice(0, query.length)}</b>${m.slice(query.length)}</div>`).join('');
+            list.classList.remove('hidden');
+        }
+
+        function hideAutocomplete() {
+            const list = document.getElementById('autocomplete-list');
+            if (list) list.classList.add('hidden');
+            autocompleteIndex = -1; activeAutocompleteInput = null;
+        }
+
+        function completeSignal(signal) {
+            if (!activeAutocompleteInput) return;
+            const { input, startIndex, query } = activeAutocompleteInput;
+            const before = input.value.slice(0, startIndex);
+            const after = input.value.slice(startIndex + query.length);
+            
+            const isConst = signal === 'inf' || signal === 'minf';
+            const insertion = isConst ? signal : `${signal}(t)`;
+            input.value = before + insertion + after;
+            
+            const newPos = startIndex + signal.length + (isConst ? 0 : 1);
+            input.setSelectionRange(newPos, newPos);
+            input.focus();
+            hideAutocomplete();
+            input.dispatchEvent(new Event('input'));
+        }
+
+        // Vínculo no input
+        function attachAutocompleteEvents(input) {
+            input.addEventListener('input', handleAutocomplete);
+            input.addEventListener('keydown', e => {
+                const list = document.getElementById('autocomplete-list');
+                if (!list || list.classList.contains('hidden')) return;
+
+                if (e.key === 'ArrowDown') { e.preventDefault(); autocompleteIndex = (autocompleteIndex + 1) % filteredSignals.length; showAutocompleteUI(input, filteredSignals, activeAutocompleteInput.startIndex, activeAutocompleteInput.query); }
+                else if (e.key === 'ArrowUp') { e.preventDefault(); autocompleteIndex = (autocompleteIndex - 1 + filteredSignals.length) % filteredSignals.length; showAutocompleteUI(input, filteredSignals, activeAutocompleteInput.startIndex, activeAutocompleteInput.query); }
+                else if (e.key === 'Tab' || e.key === 'Enter') {
+                    e.preventDefault();
+                    const target = autocompleteIndex === -1 ? filteredSignals[0] : filteredSignals[autocompleteIndex];
+                    if (target) completeSignal(target);
+                }
+                else if (e.key === 'Escape') { hideAutocomplete(); }
+            });
+            input.addEventListener('blur', () => setTimeout(hideAutocomplete, 200));
         }
 
         function getActiveSignal() { return state.signals.find(s => s.id === state.activeSignalId) || state.signals[0]; }
@@ -795,8 +1083,9 @@
                 return `<div class="signal-card p-2 md:p-2.5 rounded-lg border cursor-pointer hover:border-slate-500" style="${cardStyle}" onclick="setActiveSignal(${sig.id})">
                     <div class="flex justify-between items-center mb-1.5 md:mb-2"><div class="flex items-center gap-2"><div class="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full shadow" style="background-color: ${sig.color.hex}"></div><span class="text-[10px] md:text-xs font-semibold ${isActive ? 'text-white' : 'text-slate-300'}">Sinal ${sig.id}</span></div>
                         <div class="flex gap-1.5 md:gap-2 items-center"><button onclick="event.stopPropagation(); toggleVisibility(${sig.id})" class="text-[10px] md:text-xs text-slate-400 hover:text-white" title="Alt+V">${sig.visible ? '👁️' : '🙈'}</button>${state.signals.length > 1 ? `<button onclick="event.stopPropagation(); removeSignal(${sig.id})" class="text-[10px] md:text-xs text-slate-500 hover:text-red-400 ml-1">✖</button>` : ''}</div></div>
-                    <div class="relative"><span class="absolute left-2 top-1.5 text-slate-400 font-mono text-[9px] md:text-[11px]">${varPrefix}</span><input type="text" class="w-full bg-[#0f172a] border ${sig.isValid ? 'border-slate-600' : 'border-red-500'} rounded py-1 md:py-1 pl-[40px] pr-2 text-[10px] md:text-xs math-font text-white focus:outline-none" value="${sig.eq}" onfocus="saveToHistory()" oninput="updateSignalEq(${sig.id}, this)" onclick="event.stopPropagation()"></div></div>`;
+                    <div class="relative"><span class="absolute left-2 top-1.5 text-slate-400 font-mono text-[9px] md:text-[11px]">${varPrefix}</span><input type="text" id="sig-input-${sig.id}" class="autocomplete-input w-full bg-[#0f172a] border ${sig.isValid ? 'border-slate-600' : 'border-red-500'} rounded py-1 md:py-1 pl-[40px] pr-2 text-[10px] md:text-xs math-font text-white focus:outline-none" value="${sig.eq}" onfocus="saveToHistory()" oninput="updateSignalEq(${sig.id}, this)" onclick="event.stopPropagation()"></div></div>`;
             }).join('');
+            state.signals.forEach(sig => { const el = document.getElementById(`sig-input-${sig.id}`); if(el) attachAutocompleteEvents(el); });
         }
 
         // Piecewise...
@@ -973,8 +1262,22 @@
                 } else if(state.sys.mode === 'class') {
                     baseSig = state.signals.find(s => s.id === state.sys.sysX) || baseSig;
                 }
-                return math.evaluate(safeEq, { t: t, n: t, A: baseSig.A, T0: baseSig.T0, phase: baseSig.phase, pi: Math.PI, e: Math.E }); 
+                return math.evaluate(safeEq, { t: t, n: t, A: baseSig.A, T0: baseSig.T0, phase: baseSig.phase, pi: Math.PI, e: Math.E, inf: xMax, minf: xMin }); 
             } catch (err) { return 0; }
+        }
+
+        function setMathGuideTab(tab) {
+            ['signals', 'blocks', 'properties'].forEach(t => {
+                const tabBtn = document.getElementById(`guide-tab-${t}`);
+                const content = document.getElementById(`guide-content-${t}`);
+                if (tabBtn) {
+                    tabBtn.classList.toggle('active', t === tab);
+                    tabBtn.classList.toggle('text-blue-400', t === tab);
+                    tabBtn.classList.toggle('text-slate-400', t !== tab);
+                    tabBtn.classList.toggle('border-blue-500', t === tab);
+                }
+                if (content) content.classList.toggle('hidden', t !== tab);
+            });
         }
 
         function saveSysSignal() {
@@ -998,25 +1301,42 @@
         function resetTransformations() { document.getElementById('slider-trans-a').value = 1; document.getElementById('slider-trans-t0').value = 0; document.getElementById('slider-trans-c').value = 1; document.getElementById('slider-trans-d').value = 0; updateTransformData(); }
         function updateTransformData() {
             if(state.appMode !== 'transform') return;
-            state.transform.baseId = parseInt(document.getElementById('sel-trans-base').value); state.transform.a = parseFloat(document.getElementById('slider-trans-a').value);
+            state.transform.baseId = parseInt(document.getElementById('sel-trans-base').value); 
+            state.transform.a = parseFloat(document.getElementById('slider-trans-a').value);
             if(state.transform.a === 0) { state.transform.a = 0.5; document.getElementById('slider-trans-a').value = 0.5; } 
-            state.transform.t0 = parseFloat(document.getElementById('slider-trans-t0').value); state.transform.C = parseFloat(document.getElementById('slider-trans-c').value); state.transform.D = parseFloat(document.getElementById('slider-trans-d').value);
+            state.transform.t0 = parseFloat(document.getElementById('slider-trans-t0').value); 
+            state.transform.C = parseFloat(document.getElementById('slider-trans-c').value); 
+            state.transform.D = parseFloat(document.getElementById('slider-trans-d').value);
             
-            document.getElementById('val-trans-a').innerText = state.transform.a.toFixed(1); document.getElementById('val-trans-t0').innerText = state.transform.t0.toFixed(1);
-            document.getElementById('val-trans-c').innerText = state.transform.C.toFixed(1); document.getElementById('val-trans-d').innerText = state.transform.D.toFixed(1);
+            // Sincronizar os inputs numéricos (caso a mudança tenha vindo do slider)
+            document.getElementById('input-trans-a').value = state.transform.a.toFixed(1); 
+            document.getElementById('input-trans-t0').value = state.transform.t0.toFixed(1);
+            document.getElementById('input-trans-c').value = state.transform.C.toFixed(1); 
+            document.getElementById('input-trans-d').value = state.transform.D.toFixed(1);
 
-            const varTime = state.domain === 'continuous' ? 't' : 'n'; const varT0 = state.domain === 'continuous' ? 't₀' : 'n₀';
+            const varTime = state.domain === 'continuous' ? 't' : 'n'; 
+            const varT0 = state.domain === 'continuous' ? 't₀' : 'n₀';
             document.getElementById('trans-formula-geral').innerText = `y(${varTime}) = C · x(a·${varTime} - ${varT0}) + D`;
-            let eqSubst = `y(${varTime}) = ${state.transform.C} · x( `; if(state.transform.a !== 1) eqSubst += `${state.transform.a}·`; eqSubst += varTime;
-            if(state.transform.t0 > 0) eqSubst += ` - ${state.transform.t0}`; else if(state.transform.t0 < 0) eqSubst += ` + ${Math.abs(state.transform.t0)}`; eqSubst += ` )`;
-            if(state.transform.D > 0) eqSubst += ` + ${state.transform.D}`; else if(state.transform.D < 0) eqSubst += ` - ${Math.abs(state.transform.D)}`;
+            let eqSubst = `y(${varTime}) = ${state.transform.C} · x( `; 
+            if(state.transform.a !== 1) eqSubst += `${state.transform.a}·`; eqSubst += varTime;
+            if(state.transform.t0 > 0) eqSubst += ` - ${state.transform.t0}`; 
+            else if(state.transform.t0 < 0) eqSubst += ` + ${Math.abs(state.transform.t0)}`; eqSubst += ` )`;
+            if(state.transform.D > 0) eqSubst += ` + ${state.transform.D}`; 
+            else if(state.transform.D < 0) eqSubst += ` - ${Math.abs(state.transform.D)}`;
             document.getElementById('trans-formula-ativa').innerText = eqSubst;
 
-            let diag = []; if(state.transform.a < 0) diag.push("Reversão no tempo."); if(Math.abs(state.transform.a) > 1) diag.push("Comprimido no tempo."); else if(Math.abs(state.transform.a) < 1 && state.transform.a !== 0) diag.push("Expandido no tempo.");
-            if(state.transform.t0 > 0) diag.push(`Atrasado em ${state.transform.t0}.`); else if(state.transform.t0 < 0) diag.push(`Adiantado em ${Math.abs(state.transform.t0)}.`);
-            if(state.transform.C < 0) diag.push("Inversão de Fase."); if(Math.abs(state.transform.C) > 1) diag.push("Amplificado."); else if(Math.abs(state.transform.C) < 1 && state.transform.C !== 0) diag.push("Atenuado.");
+            let diag = []; 
+            if(state.transform.a < 0) diag.push("Reversão no tempo."); 
+            if(Math.abs(state.transform.a) > 1) diag.push("Comprimido no tempo."); 
+            else if(Math.abs(state.transform.a) < 1 && state.transform.a !== 0) diag.push("Expandido no tempo.");
+            if(state.transform.t0 > 0) diag.push(`Atrasado em ${state.transform.t0}.`); 
+            else if(state.transform.t0 < 0) diag.push(`Adiantado em ${Math.abs(state.transform.t0)}.`);
+            if(state.transform.C < 0) diag.push("Inversão de Fase."); 
+            if(Math.abs(state.transform.C) > 1) diag.push("Amplificado."); 
+            else if(Math.abs(state.transform.C) < 1 && state.transform.C !== 0) diag.push("Atenuado.");
             if(state.transform.D !== 0) diag.push(`Nível DC (Offset) de ${state.transform.D}.`);
-            document.getElementById('trans-diagnostic').innerHTML = diag.length > 0 ? "<ul><li>" + diag.join("</li><li>") + "</li></ul>" : "Sinal Inalterado."; draw();
+            document.getElementById('trans-diagnostic').innerHTML = diag.length > 0 ? "<ul><li>" + diag.join("</li><li>") + "</li></ul>" : "Sinal Inalterado."; 
+            draw();
         }
         function getTransformedValue(t) { const baseSig = state.signals.find(s => s.id === state.transform.baseId); if(!baseSig || !baseSig.isValid) return 0; const innerTime = state.transform.a * t - state.transform.t0; if (state.domain === 'discrete' && !Number.isInteger(innerTime)) return state.transform.D; return state.transform.C * evaluateSignal(innerTime, baseSig) + state.transform.D; }
         function saveTransformedSignal() {
@@ -1152,17 +1472,27 @@
             state.conv.fId = parseInt(document.getElementById('sel-conv-f').value); state.conv.gId = parseInt(document.getElementById('sel-conv-g').value);
             const sigF = state.signals.find(s => s.id === state.conv.fId); const sigG = state.signals.find(s => s.id === state.conv.gId);
             if(!sigF || !sigG || !sigF.isValid || !sigG.isValid) return;
-            
+
+            const suppF = findSignalSupport(sigF); const suppG = findSignalSupport(sigG);
+            let convMin = defXMin; let convMax = defXMax;
+            if (suppF.a !== -Infinity && suppG.a !== -Infinity && suppF.b !== Infinity && suppG.b !== Infinity) {
+                convMin = Math.floor(suppF.a + suppG.a - 5);
+                convMax = Math.ceil(suppF.b + suppG.b + 5);
+            }
+            const timeSlider = document.getElementById('slider-conv-time');
+            timeSlider.min = convMin; timeSlider.max = convMax;
+            if (state.conv.t < convMin || state.conv.t > convMax) { state.conv.t = convMin; updateConvUI(); }
+
             state.conv.dataCache = []; const dt = state.domain === 'continuous' ? 0.02 : 1.0; 
-            const mathRangeMin = Math.min(defXMin - 10, xMin - 10); const mathRangeMax = Math.max(defXMax + 10, xMax + 10);
-            
+            const mathRangeMin = Math.min(convMin - 5, xMin - 10); const mathRangeMax = Math.max(convMax + 5, xMax + 10);
+
             const size = Math.floor((mathRangeMax - mathRangeMin) / dt) + 1;
             const fArr = new Float64Array(size); const gArr = new Float64Array(size);
             for(let i=0; i<size; i++) {
                 let tau = mathRangeMin + i * dt;
                 fArr[i] = evaluateSignal(tau, sigF); gArr[i] = evaluateSignal(tau, sigG);
             }
-            
+
             const offset = Math.round(mathRangeMin/dt);
             for(let k=0; k<size; k++) {
                 let t = mathRangeMin + k * dt;
@@ -1174,14 +1504,12 @@
                 }
                 state.conv.dataCache.push({ t: t, val: integral });
             }
-            
+
             const symbol = state.domain === 'continuous' ? '∫' : '∑'; const dtSym = state.domain === 'continuous' ? 'dτ' : ''; const varTime = state.domain === 'continuous' ? 't' : 'n'; const varShift = state.domain === 'continuous' ? 'τ' : 'k';
             document.getElementById('conv-formula-display').innerText = `(f * g)(${varTime}) = ${symbol} f(${varShift}) g(${varTime} - ${varShift}) ${dtSym}`;
-            
-            if(!state.conv.playing && state.conv.t === -10) state.conv.t = defXMin + 5;
+
             draw();
-        }
-        function toggleConvPlay() { state.conv.playing = !state.conv.playing; document.getElementById('icon-play').classList.toggle('hidden', state.conv.playing); document.getElementById('icon-pause').classList.toggle('hidden', !state.conv.playing); if (state.conv.playing) { if(state.conv.t >= xMax) state.conv.t = xMin; lastTime = performance.now(); animFrameId = requestAnimationFrame(convLoop); } else { cancelAnimationFrame(animFrameId); } }
+        }        function toggleConvPlay() { state.conv.playing = !state.conv.playing; document.getElementById('icon-play').classList.toggle('hidden', state.conv.playing); document.getElementById('icon-pause').classList.toggle('hidden', !state.conv.playing); if (state.conv.playing) { if(state.conv.t >= xMax) state.conv.t = xMin; lastTime = performance.now(); animFrameId = requestAnimationFrame(convLoop); } else { cancelAnimationFrame(animFrameId); } }
         function resetConv() { state.conv.t = defXMin + 5; if(!state.conv.playing) draw(); else updateConvUI(); }
         function stepConv(dir) { if(state.conv.playing) toggleConvPlay(); state.conv.t += dir * (state.domain === 'continuous' ? 0.5 : 1.0); updateConvUI(); draw(); }
         function manualScrubConv(val) { if(state.conv.playing) toggleConvPlay(); state.conv.t = parseFloat(val); if(state.domain === 'discrete') state.conv.t = Math.round(state.conv.t); updateConvUI(); draw(); }
@@ -1189,40 +1517,57 @@
         function convLoop(time) { if (!state.conv.playing) return; const dtMs = time - lastTime; lastTime = time; state.conv.t += state.conv.speed * (dtMs / 16) * (state.domain === 'continuous' ? 60 : 30) * 0.01; if (state.conv.t > xMax) { toggleConvPlay(); state.conv.t = xMax; } updateConvUI(); draw(); if(state.conv.playing) animFrameId = requestAnimationFrame(convLoop); }
         function updateConvUI() { document.getElementById('conv-time-display').innerText = state.conv.t.toFixed(2); document.getElementById('slider-conv-time').value = state.conv.t; updateIntervalState(); }
 
-        // --- CONTROLES UI ---
-        function attachSliderEvents() {
-            const updateFromSlider = () => {
-                const act = getActiveSignal(); act.A = parseFloat(sliderA.value); act.T0 = parseFloat(sliderT0.value); act.phase = parseFloat(sliderPhase.value);
-                valA.innerText = act.A.toFixed(1); valT0.innerText = act.T0; valPhase.innerText = formatPhase(act.phase) + " rad";
+        // --- CONTROLES UI & SINCRONIZAÇÃO ---
+        function syncSliderInput(sliderId, inputId, stateRef, stateKey, callback) {
+            const slider = document.getElementById(sliderId);
+            const input = document.getElementById(inputId);
+            if (!slider || !input) return;
+
+            slider.addEventListener('input', () => {
+                const val = parseFloat(slider.value);
+                input.value = val;
+                if (stateRef) stateRef[stateKey] = val;
+                if (callback) callback(val);
                 updateUI();
-            };
-            sliderA.addEventListener('input', updateFromSlider); sliderT0.addEventListener('input', updateFromSlider); sliderPhase.addEventListener('input', updateFromSlider);
+            });
+
+            input.addEventListener('input', () => {
+                let val = parseFloat(input.value);
+                if (isNaN(val)) return;
+                // Clamp value to slider range
+                const min = parseFloat(slider.min); const max = parseFloat(slider.max);
+                if (val < min) val = min; if (val > max) val = max;
+                
+                slider.value = val;
+                if (stateRef) stateRef[stateKey] = val;
+                if (callback) callback(val);
+                updateUI();
+            });
         }
 
-        // DETECTAR PERIODO AUTOMATICAMENTE
-        function calculatePeriod(sig) {
-            if (/\bT0\b/.test(sig.eq)) return sig.T0;
-            if (/\b(rect|tri|sinc|pulse|dirac|ramp|dublet|u)\b/.test(sig.eq)) return null;
+        function attachSliderEvents() {
+            // Parâmetros do Sinal Ativo
+            syncSliderInput('slider-amplitude', 'input-amplitude', null, null, (v) => { getActiveSignal().A = v; });
+            syncSliderInput('slider-period', 'input-period', null, null, (v) => { getActiveSignal().T0 = v; });
+            syncSliderInput('slider-phase', 'input-phase', null, null, (v) => { getActiveSignal().phase = v; });
 
-            const dt = 0.05; let vals = [];
-            for (let t = 0; t <= 50; t += dt) vals.push(evaluateSignal(t, sig));
-            
-            let peaks = [];
-            for(let i=1; i<vals.length-1; i++){
-                if(vals[i] > vals[i-1] && vals[i] > vals[i+1] && vals[i] > 0.05) peaks.push(i*dt);
-            }
-            
-            if(peaks.length >= 2) {
-                let T = peaks[1] - peaks[0];
-                if(T > 0.1) return Math.round(T * 100) / 100;
-            }
-            return null;
+            // Transformações
+            syncSliderInput('slider-trans-a', 'input-trans-a', state.transform, 'a', updateTransformData);
+            syncSliderInput('slider-trans-t0', 'input-trans-t0', state.transform, 't0', updateTransformData);
+            syncSliderInput('slider-trans-c', 'input-trans-c', state.transform, 'C', updateTransformData);
+            syncSliderInput('slider-trans-d', 'input-trans-d', state.transform, 'D', updateTransformData);
         }
 
         function updateSlidersFromActiveSignal() {
             const act = getActiveSignal(); 
-            sliderA.value = act.A; sliderT0.value = act.T0; sliderPhase.value = act.phase;
-            valA.innerText = act.A.toFixed(1); valT0.innerText = act.T0; valPhase.innerText = formatPhase(act.phase) + " rad";
+            const sA = document.getElementById('slider-amplitude'); const iA = document.getElementById('input-amplitude');
+            const sT = document.getElementById('slider-period'); const iT = document.getElementById('input-period');
+            const sP = document.getElementById('slider-phase'); const iP = document.getElementById('input-phase');
+
+            if(sA) sA.value = act.A; if(iA) iA.value = act.A.toFixed(1);
+            if(sT) sT.value = act.T0; if(iT) iT.value = act.T0;
+            if(sP) sP.value = act.phase; if(iP) iP.value = act.phase.toFixed(2);
+
             document.getElementById('controls-title').innerHTML = `<div class="w-2 md:w-2.5 h-2 md:h-2.5 rounded-full" style="background-color: ${act.color.hex}"></div> Parâmetros (Sinal ${act.id})`;
             
             const hasA = /\bA\b/.test(act.eq);
@@ -1268,11 +1613,30 @@
         }
 
         function formatPhase(val) { if (Math.abs(val) < 0.1) return "0"; const frac = val / Math.PI; if (Math.abs(frac - 1) < 0.1) return "π"; if (Math.abs(frac + 1) < 0.1) return "-π"; return `${frac.toFixed(2)}π`; }
+        
+        // DETECTAR PERIODO AUTOMATICAMENTE
+        function calculatePeriod(sig) {
+            if (/\bT0\b/.test(sig.eq)) return sig.T0;
+            if (/\b(rect|tri|sinc|pulse|dirac|ramp|dublet|u)\b/.test(sig.eq)) return null;
+            const dt = 0.05; let vals = [];
+            for (let t = 0; t <= 50; t += dt) vals.push(evaluateSignal(t, sig));
+            let peaks = [];
+            for(let i=1; i<vals.length-1; i++){ if(vals[i] > vals[i-1] && vals[i] > vals[i+1] && vals[i] > 0.05) peaks.push(i*dt); }
+            if(peaks.length >= 2) { let T = peaks[1] - peaks[0]; if(T > 0.1) return Math.round(T * 100) / 100; }
+            return null;
+        }
+
         function updateUI() { updateSlidersFromActiveSignal(); if(state.appMode === 'analysis') updateMathPanel(); if(state.appMode === 'systems') updateSysData(); renderLegend(); draw(); }
 
         function evaluateSignal(timeValue, sig) {
             if (!sig.isValid || !sig.visible) return 0;
-            try { const safeEq = sig.eq.replace(/ˆ/g, '^'); return math.evaluate(safeEq, { t: timeValue, n: timeValue, A: sig.A, T0: sig.T0, phase: sig.phase, pi: Math.PI, e: Math.E }); } catch (err) { return 0; }
+            try { 
+                const scope = { t: timeValue, n: timeValue, A: sig.A, T0: sig.T0, phase: sig.phase, pi: Math.PI, inf: xMax, minf: xMin };
+                if (sig.compiled) return sig.compiled.evaluate(scope);
+                const safeEq = sig.eq.replace(/ˆ/g, '^'); 
+                sig.compiled = math.compile(safeEq);
+                return sig.compiled.evaluate(scope); 
+            } catch (err) { return 0; }
         }
         function getActiveEvenValue(t) { const sig = getActiveSignal(); return (evaluateSignal(t, sig) + evaluateSignal(-t, sig)) / 2; }
         function getActiveOddValue(t) { const sig = getActiveSignal(); return (evaluateSignal(t, sig) - evaluateSignal(-t, sig)) / 2; }
@@ -1414,31 +1778,56 @@
             const sigF = state.signals.find(s => s.id === state.conv.fId); const sigG = state.signals.find(s => s.id === state.conv.gId);
             if(!sigF || !sigG || !sigF.isValid || !sigG.isValid) return;
             const t = state.domain === 'continuous' ? state.conv.t : Math.round(state.conv.t);
-            const f = (tau) => evaluateSignal(tau, sigF); const g = (tau) => evaluateSignal(t - tau, sigG); const overlap = (tau) => f(tau) * g(tau);
+            
+            // Memoização local para o frame atual
+            const f = (tau) => evaluateSignal(tau, sigF); 
+            const g = (tau) => evaluateSignal(t - tau, sigG); 
+            const overlap = (tau) => f(tau) * g(tau);
             
             if (state.domain === 'continuous') drawLine(overlap, 'transparent', [], 0, true, 'rgba(250, 204, 21, 0.4)'); 
             
             ctx.globalAlpha = 0.8;
-            if (state.domain === 'continuous') { drawLine(f, '#3b82f6', [], window.innerWidth < 768 ? 1.5 : 2); drawLine(g, '#ef4444', [], window.innerWidth < 768 ? 1.5 : 2); } else {
-                for (let k = Math.ceil(xMin); k <= Math.floor(xMax); k++) { const Fval = f(k); const Gval = g(k); if(Fval !== 0 && Gval !== 0) { const cx = originX + k * scaleX; const cy = originY - (Fval * Gval) * scaleY; ctx.strokeStyle = '#facc15'; ctx.lineWidth = window.innerWidth < 768 ? 3 : 4; ctx.beginPath(); ctx.moveTo(cx, originY); ctx.lineTo(cx, cy); ctx.stroke(); } }
+            if (state.domain === 'continuous') { 
+                drawLine(f, '#3b82f6', [], window.innerWidth < 768 ? 1.5 : 2); 
+                drawLine(g, '#ef4444', [], window.innerWidth < 768 ? 1.5 : 2); 
+            } else {
+                for (let k = Math.ceil(xMin); k <= Math.floor(xMax); k++) { 
+                    const Fval = f(k); const Gval = g(k); 
+                    if(Fval !== 0 && Gval !== 0) { 
+                        const cx = originX + k * scaleX; const cy = originY - (Fval * Gval) * scaleY; 
+                        ctx.strokeStyle = '#facc15'; ctx.lineWidth = window.innerWidth < 768 ? 3 : 4; 
+                        ctx.beginPath(); ctx.moveTo(cx, originY); ctx.lineTo(cx, cy); ctx.stroke(); 
+                    } 
+                }
                 const stemRad = window.innerWidth < 768 ? 2.5 : 3; drawStems(f, '#3b82f6', stemRad); drawStems(g, '#ef4444', stemRad);
             }
             ctx.globalAlpha = 1.0;
             
-            const cacheEntry = state.conv.dataCache.reduce((prev, curr) => Math.abs(curr.t - t) < Math.abs(prev.t - t) ? curr : prev, state.conv.dataCache[0]);
+            // BUSCA BINÁRIA NO CACHE (O(log N))
+            let cacheEntry = null;
+            if (state.conv.dataCache && state.conv.dataCache.length > 0) {
+                let low = 0, high = state.conv.dataCache.length - 1;
+                while (low <= high) {
+                    let mid = Math.floor((low + high) / 2);
+                    let diff = state.conv.dataCache[mid].t - t;
+                    if (Math.abs(diff) < 0.01) { cacheEntry = state.conv.dataCache[mid]; break; }
+                    if (diff < 0) low = mid + 1; else high = mid - 1;
+                }
+                if (!cacheEntry) cacheEntry = state.conv.dataCache[Math.max(0, Math.min(low, state.conv.dataCache.length - 1))];
+            }
+            
             document.getElementById('conv-area-display').innerText = cacheEntry ? cacheEntry.val.toFixed(3) : "0.000";
             
             if(state.conv.dataCache.length > 0) {
                 ctx.strokeStyle = '#ffffff'; ctx.lineWidth = window.innerWidth < 768 ? 2.5 : 3; ctx.beginPath(); let started = false;
                 for(let i=0; i < state.conv.dataCache.length; i++) {
                     const pt = state.conv.dataCache[i]; if (pt.t > t) break; 
-                    if(pt.t < xMin - 5 || pt.t > xMax + 5) continue; // Panning optimizer
+                    if(pt.t < xMin - 5 || pt.t > xMax + 5) continue; 
                     const cx = originX + pt.t * scaleX; const cy = originY - pt.val * scaleY;
                     if(!started) { ctx.moveTo(cx, cy); started = true; } else { ctx.lineTo(cx, cy); }
-                    if(state.domain === 'discrete' && Math.abs(pt.t - Math.round(pt.t)) < 0.01) { ctx.fillStyle = '#ffffff'; ctx.fillRect(cx-1.5, cy-1.5, 3, 3); }
                 }
                 if(state.domain === 'continuous') ctx.stroke();
-                if(started) { const lastPt = state.conv.dataCache.filter(p => p.t <= t).pop(); if(lastPt){ ctx.fillStyle = '#facc15'; ctx.beginPath(); ctx.arc(originX + lastPt.t * scaleX, originY - lastPt.val * scaleY, window.innerWidth < 768 ? 4 : 5, 0, Math.PI*2); ctx.fill(); } }
+                if(started && cacheEntry) { ctx.fillStyle = '#facc15'; ctx.beginPath(); ctx.arc(originX + cacheEntry.t * scaleX, originY - cacheEntry.val * scaleY, window.innerWidth < 768 ? 4 : 5, 0, Math.PI*2); ctx.fill(); }
             }
             
             if(state.conv.criticalPoints && state.conv.criticalPoints.length > 0) {
@@ -1563,10 +1952,46 @@
             if(hoverActive) drawHoverTooltip();
         }
 
+        function toggleControlsMenu() {
+            const stack = document.getElementById('controls-stack');
+            const btn = document.getElementById('main-controls-btn');
+            stack.classList.toggle('expanded');
+            btn.classList.toggle('expanded');
+        }
+
+        function toggleLegend() {
+            showLegend = !showLegend;
+            const legend = document.getElementById('chart-legend');
+            const btn = document.getElementById('btn-toggle-legend');
+            if (showLegend) {
+                legend.style.opacity = '1';
+                legend.style.pointerEvents = 'auto';
+                btn.classList.add('active');
+            } else {
+                legend.style.opacity = '0';
+                legend.style.pointerEvents = 'none';
+                btn.classList.remove('active');
+            }
+        }
+
         function openShortcutsGuide() { document.getElementById('shortcuts-modal').classList.remove('hidden'); }
         function closeShortcutsGuide() { document.getElementById('shortcuts-modal').classList.add('hidden'); }
         function openMathGuide() { document.getElementById('math-guide-modal').classList.remove('hidden'); }
         function closeMathGuide() { document.getElementById('math-guide-modal').classList.add('hidden'); }
+
+        // TOOLTIP CUSTOMIZADO
+        function showTooltip(e, text) {
+            const tooltip = document.getElementById('global-tooltip');
+            tooltip.innerText = text;
+            tooltip.classList.add('visible');
+            const rect = e.currentTarget.getBoundingClientRect();
+            // Posicionar à esquerda do botão
+            tooltip.style.left = (rect.left - tooltip.offsetWidth - 12) + 'px';
+            tooltip.style.top = (rect.top + (rect.height - tooltip.offsetHeight) / 2) + 'px';
+        }
+        function hideTooltip() {
+            document.getElementById('global-tooltip').classList.remove('visible');
+        }
     </script>
 </body>
 </html>
