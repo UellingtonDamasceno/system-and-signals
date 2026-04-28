@@ -1582,17 +1582,47 @@
 
             document.getElementById('controls-title').innerHTML = `<div class="w-2 md:w-2.5 h-2 md:h-2.5 rounded-full" style="background-color: ${act.color.hex}"></div> Parâmetros (Sinal ${act.id})`;
             
-            const hasA = /\bA\b/.test(act.eq);
-            document.getElementById('slider-group-A').style.display = hasA ? 'block' : 'none';
-            document.getElementById('btn-inject-A').style.display = hasA ? 'none' : 'block';
+            // --- INTELIGÊNCIA TEÓRICA DE SINAIS ---
+            const eq = act.eq.trim();
+            const hasA = /\bA\b/.test(eq);
+            const hasT0 = /\bT0\b/.test(eq);
+            const hasPhase = /\bphase\b/.test(eq);
 
-            const hasT0 = /\bT0\b/.test(act.eq);
-            document.getElementById('slider-group-T0').style.display = hasT0 ? 'block' : 'none';
-            document.getElementById('btn-inject-T0').style.display = hasT0 ? 'none' : 'block';
+            const isPiecewise = eq.includes('?') || eq.includes(':');
+            const isPeriodic = /\b(sin|cos)\b/i.test(eq);
+            const isAperiodic = /\b(u|rect|tri|sinc|dirac|ramp|dublet|e|pulse)\b/i.test(eq);
+            const isPureNumber = /^-?[0-9.]+$/.test(eq);
 
-            const hasPhase = /\bphase\b/.test(act.eq);
-            document.getElementById('slider-group-phase').style.display = hasPhase ? 'block' : 'none';
-            document.getElementById('btn-inject-phase').style.display = hasPhase ? 'none' : 'block';
+            // --- VALIDAÇÃO ESTRITA ---
+            // Um slider só aparece se: (Variável está na string) E (Sinal admite o parâmetro teoricamente)
+            
+            const admitsT0 = isPeriodic || (!isAperiodic && !isPiecewise && !isPureNumber);
+            const admitsPhase = isPeriodic || (!isAperiodic && !isPiecewise && !isPureNumber);
+
+            // Amplitude (quase todos admitem, exceto se for explicitamente bloqueado por design)
+            const showSliderA = hasA; 
+            document.getElementById('slider-group-A').style.display = showSliderA ? 'block' : 'none';
+            document.getElementById('btn-inject-A').style.display = (!hasA && !isPiecewise) ? 'block' : 'none';
+
+            // Período
+            const showSliderT0 = hasT0 && admitsT0;
+            document.getElementById('slider-group-T0').style.display = showSliderT0 ? 'block' : 'none';
+            document.getElementById('btn-inject-T0').style.display = (!hasT0 && admitsT0) ? 'block' : 'none';
+
+            // Fase
+            const showSliderPhase = hasPhase && admitsPhase;
+            document.getElementById('slider-group-phase').style.display = showSliderPhase ? 'block' : 'none';
+            document.getElementById('btn-inject-phase').style.display = (!hasPhase && admitsPhase) ? 'block' : 'none';
+
+            // Ocultar painel inteiro se nada for injetável ou estiver ativo
+            const canInjectAny = (!isPiecewise && (true || admitsT0 || admitsPhase));
+            const anySliderVisible = showSliderA || showSliderT0 || showSliderPhase;
+            document.getElementById('sliders-container').parentElement.style.display = (anySliderVisible || canInjectAny) ? 'block' : 'none';
+
+            // Alerta visual se o usuário digitar algo teoricamente inválido
+            if ((hasT0 && !admitsT0) || (hasPhase && !admitsPhase)) {
+                document.getElementById('controls-title').innerHTML += ` <span class="text-[9px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded animate-pulse">⚠️ Variável Teórica Inválida</span>`;
+            }
 
             activeSignalPeriod = calculatePeriod(act);
             const gridCheck = document.getElementById('check-period');
