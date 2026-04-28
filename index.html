@@ -992,13 +992,18 @@
             if (param === 'A') act.eq = `A * (${act.eq})`;
             else if (param === 'T0') act.eq = act.eq.replace(regex, `((2 * pi / T0) * ${varT})`);
             else if (param === 'phase') act.eq = act.eq.replace(regex, `(${varT} - phase)`); 
-            try { const safeEq = act.eq.replace(/ˆ/g, '^'); math.evaluate(safeEq, {t: 1, n: 1, A: 1, T0: 1, phase: 1, pi: Math.PI}); act.isValid = true; } catch (err) { act.isValid = false; }
+
+            try { 
+                const safeEq = act.eq.replace(/ˆ/g, '^'); 
+                act.compiled = math.compile(safeEq);
+                act.isValid = true; 
+            } catch (err) { act.isValid = false; }
+
             renderSignalsList(); updateUI();
         }
-
         // --- CONFIGURAÇÕES & AUTOCOMPLETE ---
         state.settings = state.settings || { autocomplete: true };
-        const AVAILABLE_SIGNALS = ['u', 'rect', 'tri', 'sinc', 'sin', 'cos', 'pulse', 'dirac', 'ramp', 'dublet', 'inf', 'minf'];
+        const AVAILABLE_SIGNALS = ['u', 'rect', 'tri', 'sinc', 'sin', 'cos', 'pulse', 'dirac', 'ramp', 'dublet', 'e', 'inf', 'minf'];
         let autocompleteIndex = -1; let filteredSignals = []; let activeAutocompleteInput = null;
 
         function openSettings() { document.getElementById('settings-modal').classList.remove('hidden'); }
@@ -1106,7 +1111,14 @@
             let eq = document.getElementById('pw-default-val').value || '0';
             for(let i = pwRules.length - 1; i >= 0; i--) { const c = pwRules[i].cond.trim(); const v = pwRules[i].val.trim(); if(c && v) { eq = `(${c}) ? (${v}) : (${eq})`; } }
             const sig = getActiveSignal(); sig.eq = eq;
-            try { const safeEq = sig.eq.replace(/ˆ/g, '^'); math.evaluate(safeEq, {t: 1, n: 1, A: 1, T0: 1, phase: 1, pi: Math.PI}); sig.isValid = true; } catch (err) { sig.isValid = false; }
+            
+            // CORREÇÃO: Re-compilar ao aplicar piecewise
+            try { 
+                const safeEq = sig.eq.replace(/ˆ/g, '^'); 
+                sig.compiled = math.compile(safeEq);
+                sig.isValid = true; 
+            } catch (err) { sig.isValid = false; }
+            
             renderSignalsList(); updateUI(); if(state.appMode === 'convolution') triggerConvUpdate(); if(state.appMode === 'systems') updateSysData(); draw(); closePiecewise();
         }
 
@@ -1601,11 +1613,19 @@
             state.domain = domain; const btnCont = document.getElementById('btn-continuous'); const btnDisc = document.getElementById('btn-discrete');
             if (domain === 'continuous') {
                 btnCont.className = "flex-1 py-1.5 px-4 text-xs md:text-sm font-medium rounded-md bg-blue-600 text-white shadow transition-all whitespace-nowrap"; btnDisc.className = "flex-1 py-1.5 px-4 text-xs md:text-sm font-medium rounded-md text-slate-400 hover:text-white transition-all whitespace-nowrap";
-                document.getElementById('label-period').innerText = "Período (T₀)"; state.signals.forEach(s => s.eq = s.eq.replace(/\bn\b/g, 't'));
+                document.getElementById('label-period').innerText = "Período (T₀)"; 
+                state.signals.forEach(s => {
+                    s.eq = s.eq.replace(/\bn\b/g, 't');
+                    try { s.compiled = math.compile(s.eq.replace(/ˆ/g, '^')); } catch(e){}
+                });
                 document.getElementById('slider-conv-time').step = "0.1"; document.getElementById('slider-trans-a').step = "0.5"; document.getElementById('slider-trans-t0').step = "0.5";
             } else {
                 btnDisc.className = "flex-1 py-1.5 px-4 text-xs md:text-sm font-medium rounded-md bg-teal-600 text-white shadow transition-all whitespace-nowrap"; btnCont.className = "flex-1 py-1.5 px-4 text-xs md:text-sm font-medium rounded-md text-slate-400 hover:text-white transition-all whitespace-nowrap";
-                document.getElementById('label-period').innerText = "Período (N)"; state.signals.forEach(s => s.eq = s.eq.replace(/\bt\b/g, 'n'));
+                document.getElementById('label-period').innerText = "Período (N)"; 
+                state.signals.forEach(s => {
+                    s.eq = s.eq.replace(/\bt\b/g, 'n');
+                    try { s.compiled = math.compile(s.eq.replace(/ˆ/g, '^')); } catch(e){}
+                });
                 document.getElementById('slider-conv-time').step = "1"; if(state.appMode === 'convolution') state.conv.t = Math.round(state.conv.t);
                 document.getElementById('slider-trans-a').step = "0.5"; document.getElementById('slider-trans-t0').step = "1"; state.transform.t0 = Math.round(state.transform.t0); document.getElementById('slider-trans-t0').value = state.transform.t0;
             }
